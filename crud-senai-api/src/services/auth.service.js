@@ -37,7 +37,7 @@ export async function loginWithLock({ email, password }) {
         if (newFails >= MAX) {
             const lockedUntil = nowPlusMinutes(LOCK_MINUTES);
             await pool.execute(
-                `UPDATE users,SET failed_attempts = ?, locked_until = ? WHERE id = ?`,
+                `UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?`,
                 [newFails, lockedUntil, user.id]
             );
             return { ok: false, statusCode: 423, message: "3 tentativas incorretas. Usuário bloqueado." };

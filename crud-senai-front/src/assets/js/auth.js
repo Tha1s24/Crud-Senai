@@ -89,25 +89,18 @@ export function initLoginPage() {
     }
 
     try {
-      // IMPORTANTE: Quando o backend estiver pronto, descomente a linha abaixo:
-      // const data = await apiRequest("/api/auth/login", { method: "POST", body: { email, password }, auth: false });
+      const data = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: { email, password },
+        auth: false
+      });
 
-      // Para fins educacionais, simulamos o login localmente
-      // A senha correta é "123456" para demonstração
-      if (password !== "123456") throw new Error("Credenciais inválidas (simulação). Use senha 123456.");
+      localStorage.setItem("token", data.token);
 
-      // Simula a geração de um token (o real virá do backend)
-      const fakeToken = "FAKE_TOKEN_DEMO";
-      localStorage.setItem("token", fakeToken);
-      localStorage.setItem("userEmail", email);
-
-      // Reseta o contador de tentativas após login bem-sucedido
-      state = { count: 0, lockedUntil: 0 };
-      setTryState(email, state);
-
-      // Mostra mensagem de sucesso e redireciona para a página de usuários
+      if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
       showAlert(alertEl, "ok", "Login realizado! Redirecionando…");
       setTimeout(() => (window.location.href = "./users.html"), 700);
+      
     } catch (err) {
       // Incrementa o contador de tentativas após erro
       state.count += 1;
