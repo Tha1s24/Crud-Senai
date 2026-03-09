@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { loginSchema } from "../validators/auth.validators.js";
 import { loginWithLock } from "../services/auth.service.js";
+import {requireAuth} from "../middlewares/auth.middlewares.js";
 
 const router = Router();
 const loginLimiter = rateLimit({
@@ -25,6 +26,13 @@ router.post("/login", loginLimiter, async (req, res, next) => {
     } catch (err) {
         next(err);
     }
+});
+
+router.get("/me", requireAuth, async (req, res) => {
+    return res.json({
+        ok: true,
+        auth: req.auth
+    });
 });
 
 export default router;
