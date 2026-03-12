@@ -3,10 +3,9 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/auth.routes.js";
-import usersRoutes from "./routes/users.routes.js";
+import usersRoutes from "./routes/user.routes.js";
 export const app = express();
 
-app.use("/api/users", usersRoutes);
 app.use(helmet());
 app.use(express.json({ limit: "50kb" }));
 app.use(cors({
@@ -19,6 +18,7 @@ app.use(rateLimit({
     limit: 300
 }));
 
+app.use("/api/users", usersRoutes);
 app.use("/api/auth", authRoutes);
 app.get("/health", (req, res) => res.json({ ok: true }));
 app.use((err, req, res, next) => {

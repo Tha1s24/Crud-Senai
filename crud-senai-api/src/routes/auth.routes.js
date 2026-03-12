@@ -5,6 +5,7 @@ import { loginWithLock } from "../services/auth.service.js";
 import {requireAuth} from "../middlewares/auth.middlewares.js";
 
 const router = Router();
+
 const loginLimiter = rateLimit({
     windowMs: 60 * 1000,
     limit: 20,
