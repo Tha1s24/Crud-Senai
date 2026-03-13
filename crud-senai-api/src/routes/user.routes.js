@@ -1,11 +1,11 @@
 import { apiRequest, setToken } from "./api.js";
 import { $, showAlert, hideAlert } from "./utils.js";
 
-// Cache local de usuários e dados do usuário logado
+// Cache local de usuários
 let usersCache = [];
 
 /**
- * Recupera o usuário logado do localStorage [3]
+ * Recupera o usuário logado do localStorage
  */
 function getLoggedUser() {
   const raw = localStorage.getItem("user");
@@ -18,22 +18,22 @@ function getLoggedUser() {
 export async function initUsersPage() {
   const form = $("#userForm");
   const alertEl = $("#alertUsers");
-  const userInfoEl = $("#loggedUserInfo"); // Elemento no HTML para exibir usuário [3]
+  const userInfoEl = $("#loggedUserInfo");
   const logoutBtn = $("#logoutBtn");
 
   const loggedUser = getLoggedUser();
 
-  // 1. Exibe informações do usuário no cabeçalho [3]
+  // Exibe usuário logado
   if (loggedUser && userInfoEl) {
     userInfoEl.textContent = `Logado como: ${loggedUser.name} (${loggedUser.profile})`;
   }
 
-  // 2. Bloqueia o formulário visualmente para quem não é ADMIN [3]
+  // Bloqueia formulário se não for ADMIN
   if (!loggedUser || loggedUser.profile !== "ADMIN") {
     if (form) form.style.display = "none";
   }
 
-  // 3. Configura o Logout [3]
+  // Logout
   if (logoutBtn) {
     logoutBtn.addEventListener("click", () => {
       setToken(null);
@@ -42,22 +42,30 @@ export async function initUsersPage() {
     });
   }
 
-  // 4. Carrega a lista inicial da API [1]
+  // Remove alertas ao digitar
+  if (form && alertEl) {
+    form.addEventListener("input", () => hideAlert(alertEl));
+  }
+
+  // Carrega lista inicial
   await loadUsersFromApi(alertEl);
 
-  // 5. Configura o envio do formulário (apenas se o formulário existir/estiver visível)
+  // Configura envio do formulário
   if (form) {
     form.addEventListener("submit", (e) => handleSaveUser(e, alertEl));
   }
 }
 
 /**
- * Busca a lista real de usuários via API [1]
+ * Busca usuários da API
  */
 async function loadUsersFromApi(alertEl) {
   try {
+    if (alertEl) hideAlert(alertEl);
+
     const list = await apiRequest("/api/users");
     usersCache = list;
+
     render(usersCache);
   } catch (err) {
     handleApiError(err, alertEl);
@@ -65,19 +73,19 @@ async function loadUsersFromApi(alertEl) {
 }
 
 /**
- * Renderiza a tabela de forma segura (Anti-XSS) [1, 3]
+ * Renderiza tabela (seguro contra XSS)
  */
 function render(users) {
   const listEl = $("#usersList");
   if (!listEl) return;
 
   listEl.innerHTML = "";
+
   const loggedUser = getLoggedUser();
 
   users.forEach((u) => {
     const tr = document.createElement("tr");
 
-    // Criação de células usando textContent para evitar XSS [1]
     const tdName = document.createElement("td");
     tdName.textContent = u.name;
 
@@ -92,7 +100,6 @@ function render(users) {
 
     const tdActions = document.createElement("td");
 
-    // Controle visual: Ações de edição/exclusão apenas para ADMIN [3]
     if (loggedUser && loggedUser.profile === "ADMIN") {
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn-ghost";
@@ -119,10 +126,13 @@ function render(users) {
 }
 
 /**
- * Salva ou atualiza um usuário via API (POST/PUT) [1, 2]
+ * Salva ou atualiza usuário
  */
 async function handleSaveUser(e, alertEl) {
   e.preventDefault();
+
+  if (alertEl) hideAlert(alertEl);
+
   const id = $("#userId").value;
   const name = $("#name").value;
   const email = $("#email").value;
@@ -131,34 +141,41 @@ async function handleSaveUser(e, alertEl) {
 
   try {
     if (id) {
-      // Edição (PUT) [2]
+      // Atualização
       await apiRequest(`/api/users/${id}`, {
         method: "PUT",
         body: { name, email, profile }
       });
+
       showAlert(alertEl, "ok", "Usuário atualizado com sucesso.");
     } else {
-      // Criação (POST) [1]
+      // Criação
       await apiRequest("/api/users", {
         method: "POST",
         body: { name, email, password, profile }
       });
+
       showAlert(alertEl, "ok", "Usuário criado com sucesso.");
     }
-    
+
     e.target.reset();
     $("#userId").value = "";
+
     await loadUsersFromApi(alertEl);
+
   } catch (err) {
     handleApiError(err, alertEl);
   }
 }
 
 /**
- * Alterna o status (Soft Delete) via API (PATCH) [2]
+ * Alterna status do usuário
  */
 async function toggleStatus(id, currentStatus) {
   const alertEl = $("#alertUsers");
+
+  if (alertEl) hideAlert(alertEl);
+
   const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
 
   try {
@@ -166,28 +183,33 @@ async function toggleStatus(id, currentStatus) {
       method: "PATCH",
       body: { status: newStatus }
     });
+
     await loadUsersFromApi(alertEl);
+
   } catch (err) {
     handleApiError(err, alertEl);
   }
 }
 
 /**
- * Preenche o formulário para edição
+ * Preenche formulário para edição
  */
 function fillForm(u) {
   $("#userId").value = u.id;
   $("#name").value = u.name;
   $("#email").value = u.email;
   $("#profile").value = u.profile;
-  $("#password").placeholder = "Deixe em branco para manter a atual";
+
+  const passwordEl = $("#password");
+  passwordEl.value = "";
+  passwordEl.placeholder = "Deixe em branco para manter a atual";
 }
 
 /**
- * Tratamento de erros padronizado da API [2]
+ * Tratamento de erros da API
  */
 function handleApiError(err, alertEl) {
-  // Erro de autenticação ou permissão: redireciona para login [2]
+
   if (err.status === 401 || err.status === 403) {
     setToken(null);
     localStorage.removeItem("user");
@@ -195,7 +217,6 @@ function handleApiError(err, alertEl) {
     return;
   }
 
-  // Conflito: e-mail duplicado [2]
   if (err.status === 409) {
     return showAlert(alertEl, "err", "Já existe um usuário com este e-mail.");
   }
