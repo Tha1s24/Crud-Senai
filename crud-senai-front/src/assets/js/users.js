@@ -1,5 +1,5 @@
 // ============================================================
-// FUNÇÃO: Usuário Logado
+// 29.11.2 - FUNÇÃO: Usuário Logado
 // ============================================================
 
 function getLoggedUser() {
@@ -7,32 +7,53 @@ function getLoggedUser() {
   return raw ? JSON.parse(raw) : null;
 }
 
-// Importa a função para fazer requisições à API
+function setToken(token) {
+  if (token) localStorage.setItem("token", token);
+  else localStorage.removeItem("token");
+}
+
+// ============================================================
+// IMPORTS
+// ============================================================
+
 import { apiRequest } from "./api.js";
-// Importa funções utilitárias (DOM, alertas, validação)
 import { $, setText, showAlert, hideAlert, validateEmail } from "./utils.js";
 
 // ============================================================
-// FUNÇÕES DE ARMAZENAMENTO (Simulação - banco local)
+// CACHE LOCAL
 // ============================================================
 
-function loadUsers() {
-  return JSON.parse(localStorage.getItem("demoUsers") || "[]");
-}
+let usersCache = [];
 
-function saveUsers(users) {
-  localStorage.setItem("demoUsers", JSON.stringify(users));
+// ============================================================
+// 29.10.7 - CARREGAR USUÁRIOS DA API
+// ============================================================
+
+async function loadUsersFromApi(alertEl) {
+  try {
+    const list = await apiRequest("/api/users");
+    usersCache = list;
+    render(usersCache);
+  } catch (err) {
+    if (err.status === 401 || err.status === 403) {
+      setToken(null);
+      window.location.href = "./login.html";
+      return;
+    }
+
+    showAlert(alertEl, "err", "Erro ao carregar usuários.");
+  }
 }
 
 // ============================================================
-// FUNÇÕES DE RENDERIZAÇÃO (UI)
+// 29.10.8 - RENDERIZAÇÃO SEGURA (ANTI-XSS)
 // ============================================================
 
 function render(users) {
   const tbody = $("#usersTbody");
   tbody.innerHTML = "";
 
-  const loggedUser = getLoggedUser(); // Captura o usuário logado para controle de botões
+  const loggedUser = getLoggedUser();
 
   users.forEach((u) => {
     const tr = document.createElement("tr");
@@ -42,19 +63,21 @@ function render(users) {
     const tdStatus = document.createElement("td");
     const tdActions = document.createElement("td");
 
-    // Proteção contra XSS
-    setText(tdName, u.name);
-    setText(tdEmail, u.email);
+    tdName.textContent = u.name;
+    tdEmail.textContent = u.email;
 
-    // Badge de status
     const statusBadge = document.createElement("span");
-    statusBadge.className = `badge ${u.active ? "active" : "inactive"}`;
-    statusBadge.textContent = u.active ? "ATIVO" : "INATIVO";
+    statusBadge.className =
+      "badge " + (u.status === "ACTIVE" ? "active" : "inactive");
+
+    statusBadge.textContent = u.status === "ACTIVE" ? "ATIVO" : "INATIVO";
+
     tdStatus.appendChild(statusBadge);
 
     // ====================================================
-    // CONTROLE DE PERMISSÃO (Somente ADMIN pode ver botões)
+    // 29.11.3 - BOTÕES APENAS PARA ADMIN
     // ====================================================
+
     if (loggedUser && loggedUser.profile === "ADMIN") {
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn-ghost";
@@ -65,8 +88,12 @@ function render(users) {
       const btnToggle = document.createElement("button");
       btnToggle.className = "btn-danger";
       btnToggle.type = "button";
-      btnToggle.textContent = u.active ? "Inativar" : "Ativar";
-      btnToggle.addEventListener("click", () => toggleStatus(u.id));
+      btnToggle.textContent =
+        u.status === "ACTIVE" ? "Inativar" : "Ativar";
+
+      btnToggle.addEventListener("click", () =>
+        toggleStatus(u.id, u.status, $("#alertUsers"))
+      );
 
       tdActions.appendChild(btnEdit);
       tdActions.appendChild(btnToggle);
@@ -82,7 +109,7 @@ function render(users) {
 }
 
 // ============================================================
-// FUNÇÕES DE MANIPULAÇÃO DO FORMULÁRIO
+// FORMULÁRIO
 // ============================================================
 
 function fillForm(user) {
@@ -90,7 +117,8 @@ function fillForm(user) {
   $("#name").value = user.name;
   $("#email").value = user.email;
   $("#profile").value = user.profile;
-  $("#active").value = user.active ? "1" : "0";
+  $("#active").value = user.status === "ACTIVE" ? "1" : "0";
+
   $("#password").value = "";
   $("#password").placeholder = "Deixe em branco para manter a senha";
 }
@@ -101,22 +129,39 @@ function clearForm() {
   $("#email").value = "";
   $("#profile").value = "USER";
   $("#active").value = "1";
+
   $("#password").value = "";
-  $("#password").placeholder = "Senha (será criptografada no backend)";
-}
-
-function toggleStatus(id) {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.id === id);
-  if (idx === -1) return;
-
-  users[idx].active = !users[idx].active;
-  saveUsers(users);
-  render(users);
+  $("#password").placeholder =
+    "Senha (será criptografada no backend)";
 }
 
 // ============================================================
-// FUNÇÃO PRINCIPAL - Inicializa a página de usuários
+// 29.10.11 - SOFT DELETE (INATIVAR)
+// ============================================================
+
+async function toggleStatus(id, currentStatus, alertEl) {
+  try {
+    const newStatus = currentStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+
+    await apiRequest(`/api/users/${id}/status`, {
+      method: "PATCH",
+      body: { status: newStatus }
+    });
+
+    await loadUsersFromApi(alertEl);
+  } catch (err) {
+    if (err.status === 401 || err.status === 403) {
+      setToken(null);
+      window.location.href = "./login.html";
+      return;
+    }
+
+    showAlert(alertEl, "err", "Erro ao alterar status do usuário.");
+  }
+}
+
+// ============================================================
+// FUNÇÃO PRINCIPAL
 // ============================================================
 
 export function initUsersPage() {
@@ -128,77 +173,126 @@ export function initUsersPage() {
   hideAlert(alertEl);
 
   // ============================================================
-  // 29.11.4 / 29.11.5 - Controle de acesso e exibição do formulário
+  // 29.11.4 - BLOQUEAR FORMULÁRIO PARA NÃO ADMIN
   // ============================================================
+
   const loggedUser = getLoggedUser();
+
   if (!loggedUser || loggedUser.profile !== "ADMIN") {
-    form.style.display = "none"; // Esconde formulário para não-ADMIN
+    form.style.display = "none";
   }
 
-  // ===== CARREGAMENTO INICIAL =====
-  const users = loadUsers();
-  render(users);
+  // ============================================================
+  // CARREGAMENTO INICIAL
+  // ============================================================
 
-  // ===== HANDLER: Formulário =====
+  loadUsersFromApi(alertEl);
+
+  // ============================================================
+  // SUBMIT FORM
+  // ============================================================
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     hideAlert(alertEl);
 
-    const id = $("#userId").value || crypto.randomUUID();
+    const id = $("#userId").value;
+
     const name = $("#name").value.trim();
     const email = $("#email").value.trim().toLowerCase();
     const profile = $("#profile").value;
-    const active = $("#active").value === "1";
+    const status = $("#active").value === "1" ? "ACTIVE" : "INACTIVE";
     const password = $("#password").value;
 
     if (name.length < 3)
       return showAlert(alertEl, "warn", "Nome deve ter pelo menos 3 caracteres.");
+
     if (!validateEmail(email))
       return showAlert(alertEl, "warn", "E-mail inválido.");
 
     try {
-      const list = loadUsers();
 
-      const exists = list.find((u) => u.email === email && u.id !== id);
-      if (exists) throw new Error("Já existe usuário com este e-mail.");
+      // ========================================================
+      // 29.10.9 - CRIAR USUÁRIO
+      // ========================================================
 
-      const idx = list.findIndex((u) => u.id === id);
-      if (idx >= 0) {
-        list[idx] = { ...list[idx], name, email, profile, active };
-      } else {
-        list.push({ id, name, email, profile, active });
+      if (!id) {
+        await apiRequest("/api/users", {
+          method: "POST",
+          body: { name, email, password, profile }
+        });
       }
 
-      saveUsers(list);
-      render(list);
+      // ========================================================
+      // 29.10.10 - EDITAR USUÁRIO
+      // ========================================================
+
+      else {
+        await apiRequest(`/api/users/${id}`, {
+          method: "PUT",
+          body: { name, email, profile, status }
+        });
+      }
+
+      await loadUsersFromApi(alertEl);
+
       clearForm();
-      showAlert(alertEl, "ok", "Usuário salvo com sucesso (simulação).");
+
+      showAlert(alertEl, "ok", "Usuário salvo com sucesso.");
     } catch (err) {
-      showAlert(alertEl, "err", err.message);
+
+      // ========================================================
+      // 29.10.12 - TRATAMENTO DE ERROS
+      // ========================================================
+
+      if (err.status === 401 || err.status === 403) {
+        setToken(null);
+        window.location.href = "./login.html";
+        return;
+      }
+
+      if (err.status === 409) {
+        showAlert(alertEl, "err", "Já existe usuário com este e-mail.");
+        return;
+      }
+
+      showAlert(alertEl, "err", "Erro ao salvar usuário.");
     }
   });
 
-  // ===== BOTÃO LIMPAR =====
+  // ============================================================
+  // BOTÃO LIMPAR
+  // ============================================================
+
   $("#btnClear").addEventListener("click", (e) => {
     e.preventDefault();
     clearForm();
     hideAlert(alertEl);
   });
 
-  // ===== BUSCA =====
+  // ============================================================
+  // BUSCA LOCAL (CACHE)
+  // ============================================================
+
   searchEl.addEventListener("input", () => {
     const term = searchEl.value.trim().toLowerCase();
-    const list = loadUsers();
-    const filtered = list.filter((u) =>
-      u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term)
+
+    const filtered = usersCache.filter(
+      (u) =>
+        u.name.toLowerCase().includes(term) ||
+        u.email.toLowerCase().includes(term)
     );
+
     render(filtered);
   });
 
-  // ===== LOGOUT =====
+  // ============================================================
+  // 29.11.5 - LOGOUT SEGURO
+  // ============================================================
+
   logoutBtn.addEventListener("click", () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("user"); // 29.11.5 - remove dados do usuário logado
+    localStorage.removeItem("user");
     window.location.href = "./login.html";
   });
 }

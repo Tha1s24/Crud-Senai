@@ -30,11 +30,16 @@ export function initLoginPage() {
 
       // Salva o token JWT e os dados do usuário no navegador
       setToken(data.token);
-      if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
 
       showAlert(alertEl, "ok", "Login realizado! Redirecionando...");
-      setTimeout(() => (window.location.href = "./users.html"), 700);
-      
+      setTimeout(() => {
+        window.location.href = "./users.html";
+      }, 700);
+
     } catch (err) {
       // Tratamento baseado no status HTTP retornado pela API
       if (err.status === 401) {
@@ -42,23 +47,58 @@ export function initLoginPage() {
       }
 
       if (err.status === 423) {
-        return showAlert(alertEl, "err", "Usuário bloqueado temporariamente. Aguarde alguns minutos e tente novamente.");
+        return showAlert(
+          alertEl,
+          "err",
+          "Usuário bloqueado temporariamente. Aguarde alguns minutos e tente novamente."
+        );
       }
 
       showAlert(alertEl, "err", err.message || "Falha ao autenticar.");
     }
   });
 
-  // Lógica inicial para o botão "Esqueci a senha" (ainda em modo de simulação nesta etapa)
   forgotBtn.addEventListener("click", async () => {
     hideAlert(alertEl);
+
     const email = emailEl.value.trim().toLowerCase();
 
     if (!validateEmail(email)) {
-      return showAlert(alertEl, "warn", "Para redefinir, informe um e-mail válido no campo e-mail.");
+      return showAlert(
+        alertEl,
+        "warn",
+        "Para redefinir, informe um e-mail válido no campo e-mail."
+      );
     }
-    
-    // Na etapa 29.15.4, este bloco será atualizado para a integração real
-    showAlert(alertEl, "ok", "Se este e-mail existir, enviaremos um link/código de redefinição (simulação).");
+
+    try {
+      const data = await apiRequest("/api/auth/forgot-password", {
+        method: "POST",
+        body: { email },
+        auth: false
+      });
+
+      const tokenInfo = data.token ? ` Token: ${data.token}` : "";
+
+      showAlert(
+        alertEl,
+        "ok",
+        `${data.message}${tokenInfo} Abra a página de redefinição para cadastrar a nova senha.`
+      );
+
+    } catch (err) {
+      console.log(
+        "DEBUG ERRO FORGOT PASSWORD:",
+        err.message,
+        err.status,
+        err.data
+      );
+
+      showAlert(
+        alertEl,
+        "err",
+        err.message || "Falha ao solicitar redefinição de senha."
+      );
+    }
   });
 }
